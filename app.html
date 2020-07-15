@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+	<script src="dist/fhir-client-v2.js"></script>
+	<script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.27.0/moment.min.js"></script>
+
+  <style>
+    p{background:lightgray; margin:1em; padding:1em;}
+    textarea{width:95vw; height:30vh; }
+  </style>
+</head>
+
+<body>
+
+  <div id="noteCreation">
+    <textarea id="ehrNote">This is a start to your note.</textarea>
+    <button id="submit">Click to Save</button>
+  </div>
+
+  <hr>
+  <h3>Debug Area</h3>
+  <p id="debug"></p>
+
+  <hr>
+
+  <div id="documents">
+    <h3>Documents from yesterday and today</h3>
+    <p v-for="item in $data.entry" v-html="item.resource.text.div" v-on:click="getBinary(item.resource.content[0].attachment.url, item.resource.content[0].attachment.contentType)">
+    </p>
+  </div>
+
+	<script>
+
+		var myApp = {}
+
+    FHIR.oauth2.ready()
+    .then(function(client){ 
+      myApp.smart = client
+      doRequests()
+    })
+
+    async function doRequests(){
+
+      var docs = await fetch(myApp.smart.state.serverUrl+"/DocumentReference?patient="+myApp.smart.patient.id+"&created=ge"+moment().subtract(1,"days").format("YYYY-MM-DD")+"&created=le"+moment().add(1,"days").format("YYYY-MM-DD"),{
+        headers:{  
+          "Accept":"application/json+fhir",
+          "Authorization":"Bearer "+myApp.smart.state.tokenResponse.access_token
+        }
+        }).then(function(data){
+          return data
+      })
+
+      var response = await docs.json()
+
+      console.log(response)
+
+      myApp.vue = new Vue({
+        el:"#documents",
+        data: response,
+        methods: {
+          getBinary: function(url, contentType){
+            var binary = fetch(url, {
+              headers:{  
+                "Accept":"application/json+fhir",
+                "Authorization":"Bearer "+myApp.smart.state.tokenResponse.access_token
+              }
+              }).then(function(data){
+                return data.json()
+              }).then(function(data){
+
+               var base64str = data.content;
+                // decode base64 string, remove space for IE compatibility
+                var binary = atob(base64str.replace(/\s/g, ''));
+                var len = binary.length;
+                var buffer = new ArrayBuffer(len);
+                var view = new Uint8Array(buffer);
+                for (var i = 0; i < len; i++) {
+                    view[i] = binary.charCodeAt(i);
+                }
+
+                // create the blob object with content-type "application/pdf"
+                var blob = new Blob( [view], { type: contentType });
+                var url = URL.createObjectURL(blob);
+                console.log(url)
+
+                let pdfWindow = window.open(url)
+
+            })
+
+          }
+        }
+      })
+
+    }
+
+  $(document).ready(function(){
+    $("body").on("click", "#submit", function(){
+      createNote()
+    })
+  })
+
+  function createNote(){
+
+      var text = $("#ehrNote").val()
+
+      var note = '<!DOCTYPE html>'
+      note += '<html lang="en">'
+      note += '<head>'
+      note += '<title>Test</title>'
+      note += '</head>'
+      note += '<body>'
+      note += '<h2>Patient Education</h2>'
+      note += '<p>'+text+'</p>'
+      note += '</body>'
+      note += '</html>';  
+
+      $("#submit").prop("disabled",true)
+
+      var docCode = [{"system": "http://loinc.org","code": "11506-3"}]
+//      var docCode = [{"system": "https://fhir.cerner.com/ec2458f2-1e24-41c8-b71b-0e701af7583d/codeSet/72","code": "63293819"}]
+          $.ajax({
+          url: myApp.smart.state.serverUrl+"/DocumentReference",
+          type: "POST",
+          data: JSON.stringify({
+            subject: {"reference": "Patient/"+myApp.smart.patient.id}, 
+            resourceType: "DocumentReference",
+            content:[{
+              attachment:{
+                contentType: "application/xhtml+xml;charset=utf-8",
+                data: btoa(note) 
+                  } 
+                }], 
+            type:{
+                coding: docCode
+                }, 
+            context: { 
+                "encounter": { "reference": "Encounter/"+myApp.smart.encounter.id }
+                }, 
+            indexed: moment().format(),  //"2015-11-18T18:00:00Z" //ISO 8601 format
+            status: "current", 
+            docStatus: { 
+                  "coding": [ { "system": "http://hl7.org/fhir/composition-status", "code": "final" } ]
+              } 
+          }),
+          crossDomain: true,
+          beforeSend: function(xhr){
+            xhr.setRequestHeader('Content-Type', 'application/json+fhir'); 
+            xhr.setRequestHeader('Authorization', 'Bearer '+myApp.smart.state.tokenResponse.access_token)     
+          },
+          success:function(data){ alert(JSON.stringify(data))},
+          complete:function(jqXHR, xhr){$("#debug").append("complete: "+jqXHR.getAllResponseHeaders())},
+          error:function(data, status, xhr){ console.log(data) },    
+        })
+
+
+
+  }
+
+	</script>
+
+</body>
+
+</html>

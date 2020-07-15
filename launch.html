@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<script src='dist/fhir-client-v2.js'>
+	</script>
+</head>
+
+<body>
+	<p>Hello, I am the page "launch.html"</p>
+
+	<script>
+		FHIR.oauth2.authorize({
+      'client_id': '7308dded-b250-402b-8e98-aa6f8203d02c',
+      'scope':  'patient/Patient.read patient/DocumentReference.read patient/DocumentReference.write patient/Binary.read openid launch',
+      'redirect_uri': 'https://docref.patientdev.repl.co/app.html'
+    });
+	</script>
+
+</body>
+
+</html>
